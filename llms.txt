@@ -1,0 +1,23 @@
+# motion-design
+
+> Agent skill. Turns a product, website, or brand into a 15–25s launch film.
+
+The human README is /README.md. The skill the model should load is /skills/motion-design/SKILL.md.
+
+## For agents
+
+- Install: copy /skills/motion-design into the agent's skills directory, or `npx skills add https://github.com/Detoy/motion-design --skill motion-design`
+- Entry: skills/motion-design/SKILL.md
+- Map: /AGENTS.md
+- Do not skip the critique loop in skills/motion-design/references/critique.md
+- Renderer: skills/motion-design/scripts/render-frames.mjs
+- Springs: skills/motion-design/assets/motion.js
+
+## Optional reads
+
+- skills/motion-design/references/inspect.md
+- skills/motion-design/references/plan.md
+- skills/motion-design/references/engine.md
+- skills/motion-design/references/motion.md
+- skills/motion-design/references/sound.md
+- skills/motion-design/references/tones.md
