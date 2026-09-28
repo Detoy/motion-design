@@ -45,9 +45,9 @@ Same folder in every case. No extra config file.
 From a product repo, or with a URL:
 
 ```text
-let's /brag about this
+let's /motion-design about this
 make a 20s launch video for https://linear.app, vertical
-/motion-reel --tone "fake Series A from 2016" --reference ./refs/frame.png
+/motion-design --tone "fake Series A from 2016" --reference ./refs/frame.png
 ```
 
 | Flag | Default | Notes |
