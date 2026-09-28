@@ -12,7 +12,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
+  const i = process.argv.indexOf('--' + name);
   if (i === -1) return fallback;
   return process.argv[i + 1];
 }
@@ -34,7 +34,7 @@ async function fileExists(p) {
 }
 
 if (!(await fileExists(htmlPath))) {
-  console.error(`HTML not found: ${htmlPath}`);
+  console.error('HTML not found: ' + htmlPath);
   process.exit(1);
 }
 
@@ -84,20 +84,12 @@ async function pickDebugPort() {
 
 async function launchChrome(debugPort, userData) {
   const args = [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-sandbox',
-    '--disable-dev-shm-usage',
-    '--disable-software-rasterizer',
-    '--hide-scrollbars',
-    '--font-render-hinting=none',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-background-networking',
-    '--disable-extensions',
-    '--disable-features=Translate,MediaRouter',
-    `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${userData}`,
+    '--headless=new', '--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage',
+    '--disable-software-rasterizer', '--hide-scrollbars', '--font-render-hinting=none',
+    '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
+    '--disable-extensions', '--disable-features=Translate,MediaRouter',
+    '--remote-debugging-port=' + debugPort,
+    '--user-data-dir=' + userData,
     'about:blank'
   ];
   const child = spawn(chromeBin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -105,15 +97,15 @@ async function launchChrome(debugPort, userData) {
   child.stderr.on('data', (d) => { err += d.toString(); });
   for (let i = 0; i < 50; i++) {
     try {
-      const r = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
+      const r = await fetch('http://127.0.0.1:' + debugPort + '/json/version');
       if (r.ok) return child;
     } catch {}
     if (child.exitCode != null) {
-      throw new Error(`Chrome exited early (${child.exitCode}). ${err.slice(0, 400)}`);
+      throw new Error('Chrome exited early (' + child.exitCode + '). ' + err.slice(0, 400));
     }
     await wait(100);
   }
-  throw new Error(`Chrome CDP not ready. ${err.slice(0, 400)}`);
+  throw new Error('Chrome CDP not ready. ' + err.slice(0, 400));
 }
 
 class Cdp {
@@ -148,12 +140,12 @@ class Cdp {
 }
 
 async function openPage(debugPort) {
-  const r = await fetch(`http://127.0.0.1:${debugPort}/json/new?about:blank`, { method: 'PUT' });
+  const r = await fetch('http://127.0.0.1:' + debugPort + '/json/new?about:blank', { method: 'PUT' });
   const text = await r.text();
   let target;
   try { target = JSON.parse(text); }
-  catch { throw new Error(`json/new failed: ${text.slice(0, 200)}`); }
-  if (!target.webSocketDebuggerUrl) throw new Error(`no ws url: ${text.slice(0, 200)}`);
+  catch { throw new Error('json/new failed: ' + text.slice(0, 200)); }
+  if (!target.webSocketDebuggerUrl) throw new Error('no ws url: ' + text.slice(0, 200));
   const cdp = new Cdp(target.webSocketDebuggerUrl);
   await cdp.ready();
   await cdp.send('Page.enable');
@@ -175,6 +167,66 @@ async function evalExpr(cdp, expr) {
 
 async function main() {
   const rootDir = path.dirname(htmlPath);
-  const { server } = await startStaticServer(rootDir);
-  const pageUrl = `http://127.0.0.1:${(await startStaticServer(rootDir)).port}/${path.basename(htmlPath)}`;
+  const { server, port: httpPort } = await startStaticServer(rootDir);
+  const pageUrl = 'http://127.0.0.1:' + httpPort + '/' + path.basename(htmlPath);
+  const debugPort = await pickDebugPort();
+  const userData = await fs.mkdtemp('/tmp/md-chrome-');
+  let chrome;
+  let cdp;
+  try {
+    chrome = await launchChrome(debugPort, userData);
+    cdp = await openPage(debugPort);
+    await cdp.send('Page.navigate', { url: pageUrl });
+    await wait(400);
+    const readyDeadline = Date.now() + 8000;
+    while (Date.now() < readyDeadline) {
+      const ready = await evalExpr(cdp, 'window.__ready === true || (typeof window.seek === "function" && window.DURATION > 0)');
+      if (ready) break;
+      await wait(100);
+    }
+    const meta = await evalExpr(cdp, '({ w: window.WIDTH || document.documentElement.clientWidth || 1920, h: window.HEIGHT || document.documentElement.clientHeight || 1080, d: window.DURATION || 20, hasSeek: typeof window.seek === "function" })');
+    if (!meta.hasSeek) throw new Error('window.seek(t) is missing');
+    await cdp.send('Emulation.setDeviceMetricsOverride', {
+      width: Math.round(meta.w),
+      height: Math.round(meta.h),
+      deviceScaleFactor: 1,
+      mobile: false
+    });
+    let stamps;
+    if (timesArg) {
+      stamps = timesArg.split(',').map((s) => Number(s.trim())).filter((n) => !Number.isNaN(n));
+    } else {
+      const n = Math.round(meta.d * fps);
+      stamps = Array.from({ length: n }, (_, i) => i / fps);
+    }
+    const pad = (i) => String(i).padStart(5, '0');
+    for (let i = 0; i < stamps.length; i++) {
+      const t = stamps[i];
+      await evalExpr(cdp, '(async () => { if (document.fonts && document.fonts.status !== "loaded") await document.fonts.ready; window.seek(' + t + '); return true; })()');
+      const shot = await cdp.send('Page.captureScreenshot', { format: 'png', fromSurface: true });
+      const name = timesArg ? ('t-' + t.toFixed(3).replace('.', 'p') + '.png') : ('frame-' + pad(i) + '.png');
+      await fs.writeFile(path.join(outDir, name), Buffer.from(shot.data, 'base64'));
+      if ((i + 1) % 30 === 0 || i === stamps.length - 1) {
+        console.error('captured ' + (i + 1) + '/' + stamps.length);
+      }
+    }
+    console.log(JSON.stringify({
+      frames: stamps.length,
+      out: outDir,
+      width: meta.w,
+      height: meta.h,
+      duration: meta.d,
+      fps: timesArg ? null : fps
+    }));
+  } finally {
+    if (cdp) cdp.close();
+    if (chrome) chrome.kill('SIGKILL');
+    server.close();
+    await fs.rm(userData, { recursive: true, force: true }).catch(() => {});
+  }
 }
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
