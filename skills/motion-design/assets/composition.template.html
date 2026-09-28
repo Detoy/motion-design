@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body { margin: 0; overflow: hidden; background: #0b0b0c; }
+    #root { position: relative; overflow: hidden; }
+    .layer { position: absolute; inset: 0; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="./motion.js"></script>
+  <script>
+    const WIDTH = 1920, HEIGHT = 1080, DURATION = 20;
+    window.WIDTH = WIDTH;
+    window.HEIGHT = HEIGHT;
+    window.DURATION = DURATION;
+    const root = document.getElementById('root');
+    root.style.width = WIDTH + 'px';
+    root.style.height = HEIGHT + 'px';
+    function layout(w, h) {
+      const min = Math.min(w, h);
+      return { w, h, gutter: Math.round(min * 0.06), display: Math.round(min * 0.09), body: Math.round(min * 0.028) };
+    }
+    window.seek = function seek(t) {
+      const L = layout(WIDTH, HEIGHT);
+      const M = window.Motion;
+      const y = M.spring(t, 0.15, 40, 0, 0.7, 'heavy');
+      const o = M.spring01(t, 0.15, 0.7, 'default');
+      root.innerHTML = '';
+      const el = document.createElement('div');
+      el.style.cssText = `position:absolute;left:${L.gutter}px;top:${HEIGHT * 0.38 + y}px;color:#f4f1ea;font:600 ${L.display}px/1.05 ui-sans-serif,system-ui;opacity:${o};letter-spacing:-0.03em;white-space:pre;`;
+      el.textContent = 'Replace this hook.';
+      root.appendChild(el);
+    };
+    document.fonts.ready.then(() => { window.seek(0); window.__ready = true; });
+  </script>
+</body>
+</html>

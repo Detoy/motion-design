@@ -1,0 +1,45 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>motion-design scrubber</title>
+<style>
+  html, body { margin: 0; background: #111; color: #eee; font: 13px/1.4 ui-sans-serif, system-ui; }
+  #stage { width: 960px; height: 540px; margin: 16px auto 8px; background: #000; overflow: hidden; position: relative; }
+  #stage iframe { border: 0; width: 1920px; height: 1080px; transform: scale(0.5); transform-origin: 0 0; }
+  #ctrl { width: 960px; margin: 0 auto 24px; display: flex; gap: 8px; align-items: center; }
+  input[type=range] { flex: 1; }
+</style>
+<div id="stage"><iframe id="frame" src="./index.html"></iframe></div>
+<div id="ctrl">
+  <button id="play">play</button>
+  <input id="scrub" type="range" min="0" max="20" step="0.001" value="0" />
+  <span id="readout">0.00s</span>
+</div>
+<script>
+  const frame = document.getElementById('frame');
+  const scrub = document.getElementById('scrub');
+  const readout = document.getElementById('readout');
+  const play = document.getElementById('play');
+  let playing = false, last = 0, acc = 0;
+  function seek(t) {
+    const w = frame.contentWindow;
+    if (!w || typeof w.seek !== 'function') return;
+    w.seek(t);
+    scrub.max = w.DURATION || 20;
+    scrub.value = t;
+    readout.textContent = t.toFixed(2) + 's';
+  }
+  play.onclick = () => { playing = !playing; play.textContent = playing ? 'pause' : 'play'; last = performance.now(); };
+  scrub.oninput = () => { acc = Number(scrub.value); seek(acc); };
+  function loop(now) {
+    if (playing) {
+      acc += (now - last) / 1000;
+      const dur = frame.contentWindow && frame.contentWindow.DURATION || 20;
+      if (acc > dur) acc = 0;
+      seek(acc);
+    }
+    last = now;
+    requestAnimationFrame(loop);
+  }
+  frame.onload = () => seek(0);
+  requestAnimationFrame(loop);
+</script>
